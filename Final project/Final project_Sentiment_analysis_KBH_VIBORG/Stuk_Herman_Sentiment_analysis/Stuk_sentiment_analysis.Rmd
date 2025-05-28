@@ -1,0 +1,249 @@
+---
+title: "sentiment analysis STUK"
+output: html_document
+author: "Jeppe Strelow Lund AND Alberte Holm Ravn"
+date: "`r format(Sys.Date(), '%d. %B %Y')`"
+---
+
+```{r}
+#install.packages(c("tidyverse", "tidytext", "tm", "textdata", "wordcloud"))
+#de forskellige programmer vi skal bruge til analysen
+#install.packages("syuzhet")
+
+library(syuzhet)
+library(here)
+library(tidyverse)
+library(pdftools)
+library(tidytext)
+library(textdata)
+library(ggwordcloud)
+library(ggplot2)
+library(knitr)
+library(tokenizers)
+library(purrr)
+library(Sentida)
+library(stringr)
+```
+```{r}
+#indlæsning af mine data
+pdf_path <- "data/Stuk_Herman_Bang.pdf"
+Stuk_tekst <- pdf_text(pdf_path) %>% paste(collapse = " ")
+
+```
+
+
+
+```{r}
+# 2. DEL I SÆTNINGER
+saetninger <- get_sentences(Stuk_tekst)
+
+# 3. SENTIMENT-ANALYSE (generelt)
+sentiment_scores <- get_sentiment(saetninger, method = "syuzhet")
+
+# 4. PLOT AF GENEREL STEMNING
+plot(sentiment_scores, type = "l", col = "blue",
+     main = "Sentimentanalyse af Herman Bangs STUK",
+     xlab = "Sætninger", ylab = "Sentiment-score")
+
+# 5. FOKUS: INDUSTRIALISERING/ MODERNITET (filtrér relevante sætninger)
+moderne_ord <- c("fabrik", "kul", "gas", "sporvogn", "elektrisk", "fremskridt", 
+                 "byggeri", "kapital", "gaslys", "maskine", "modernitet")
+
+moderne_saetninger <- saetninger[str_detect(saetninger, str_c(moderne_ord, collapse = "|"))]
+
+moderne_scores <- get_sentiment(moderne_saetninger, method = "syuzhet")
+
+# 6. PLOT FOR INDUSTRIALISERINGSTEMA
+plot(moderne_scores, type = "l", col = "darkred",
+     main = "Sentiment: Industrialisering i STUK",
+     xlab = "Forekomst", ylab = "Score")
+
+# 7. TOPPOSITIV OG NEGATIV EKSEMPEL
+cat("Top positiv:\n")
+print(moderne_saetninger[which.max(moderne_scores)])
+
+cat("\nTop negativ:\n")
+print(moderne_saetninger[which.min(moderne_scores)])
+
+# 8. GENNEMSNITLIG SCORE
+mean(moderne_scores)
+```
+
+
+
+```{r}
+# 1. Læs sentiment-ordbog
+sent_lex <- read_csv("industrial_sentiment.csv")
+
+# 2. Tokenisér din tekst (fx fra 'Stuk')
+df <- tibble(text = saetninger) %>%
+  unnest_tokens(word, text) %>%
+  filter(str_detect(word, "[a-zæøå]"))
+
+# 3. Join med sentimentordbog
+df_sentiment <- df %>%
+  inner_join(sent_lex, by = "word")
+
+# 4. Visualisér hvilke ord der fylder
+df_sentiment %>%
+  count(word, sentiment, sort = TRUE) %>%
+  ggplot(aes(x = reorder(word, n), y = n, fill = sentiment)) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(title = "Ord relateret til industrialisering i STUK",
+       x = "Ord", y = "Frekvens")
+```
+
+
+
+
+```{r}
+# Pakker
+library(pdftools)
+library(tokenizers)
+library(purrr)
+library(Sentida)
+library(stringr)
+library(tibble)
+library(dplyr)
+
+# Funktion: Kontekstbaseret sentimentanalyse
+Analyser_sentiment_kontekst <- function(pdf_path, negativ_keywords, positiv_keywords, window = 5) {
+  text <- pdf_text(pdf_path)
+  full_text <- paste(text, collapse = " ")
+  words <- tokenize_words(full_text, lowercase = TRUE)[[1]]
+  
+  get_context <- function(words, index, window) {
+    start <- max(1, index - window)
+    end <- min(length(words), index + window)
+    paste(words[start:end], collapse = " ")
+  }
+
+  safe_sentida <- function(text) {
+    tryCatch(
+      sentida(text, output = "total"),
+      error = function(e) NA_real_
+    )
+  }
+
+  neg_index <- which(words %in% negativ_keywords)
+  pos_index <- which(words %in% positiv_keywords)
+
+  neg_contexts <- map_chr(neg_index, ~get_context(words, .x, window))
+  neg_scores <- map_dbl(neg_contexts, safe_sentida)
+
+  pos_contexts <- map_chr(pos_index, ~get_context(words, .x, window))
+  pos_scores <- map_dbl(pos_contexts, safe_sentida)
+
+  tibble(
+    type = c(rep("negativ", length(neg_scores)), rep("positiv", length(pos_scores))),
+    context = c(neg_contexts, pos_contexts),
+    score = c(neg_scores, pos_scores)
+  )
+}
+
+# Negative nøgleord (kritik af modernitet og industrialiseringen
+negativ_keywords <- c(
+  "kul", "maskine", "gaslys", "støj", "byggeri", "kapital", "kalket", "glans", "røg",
+  "tummel", "elektrisk", "travlhed", "illusion", "tomhed", "overflade", "marmorpuds", "luften", "electronic", "mørket", "støjen", "København", "stress", "forfald", "fremmedgørelse"
+)
+
+# Positive nøgleord (fremskridt, vitalitet)
+positiv_keywords <- c(
+  "fremskridt", "belysning", "illumination", "livligt", "Tivoli", "bevægelse",
+  "fremsynet", "fornyelse", "fremtid", "lys", "Basaren", "Victoria"
+)
+
+# analysen på vores PDF-fil
+resultat <- Analyser_sentiment_kontekst("data/Stuk_Herman_Bang.pdf",
+                                        negativ_keywords,
+                                        positiv_keywords,
+                                        window = 5)
+
+# Se gennemsnitligt sentiment for hver type
+resultat %>% group_by(type) %>% summarise(gennemsnit = mean(score, na.rm = TRUE))
+
+# Se nogle eksempler
+head(resultat, 10)
+
+```
+
+
+```{r}
+
+# Søjlediagram: antal kontekster
+ggplot(resultat, aes(x = type, fill = type)) +
+  geom_bar() +
+  labs(title = "Antal omtaler relateret til industrialisering i STUK",
+       x = "Sentimenttype", y = "Antal passager") +
+  scale_fill_manual(values = c("negativ" = "firebrick", "positiv" = "forestgreen")) +
+  theme_minimal()
+
+```
+```{r}
+sentiment_pct <- resultat %>%
+  count(type) %>%
+  mutate(procent = n / sum(n) * 100)
+
+# Visualisering i procent
+library(ggplot2)
+
+ggplot(sentiment_pct, aes(x = type, y = procent, fill = type)) +
+  geom_col(width = 0.6) +
+  geom_text(aes(label = paste0(round(procent, 1), "%")), vjust = -0.5, size = 4) +
+  labs(title = "Procentvis fordeling af industrialiserings-relateret omtale i STUK",
+       x = "Sentimenttype", y = "Andel af passager (%)") +
+  scale_fill_manual(values = c("negativ" = "firebrick", "positiv" = "forestgreen")) +
+  ylim(0, 100) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+
+
+```{r}
+# Boxplot: sentiment-score fordelt på type
+ggplot(resultat, aes(x = type, y = score, fill = type)) +
+  geom_boxplot() +
+  labs(title = "Fordeling af sentiment-score for industrialiseringsrelaterede passager",
+       x = "Sentimenttype", y = "Sentiment-score (fra Sentida)") +
+  scale_fill_manual(values = c("negativ" = "firebrick", "positiv" = "forestgreen")) +
+  theme_minimal()
+
+```
+
+
+```{r}
+#top 5 mest negative passager
+resultat %>%
+  filter(type == "negativ") %>%
+  arrange(score) %>%
+  slice(1:5) %>%
+  pull(context)
+
+```
+
+```{r}
+#top 5 mest positive passager
+resultat %>%
+  filter(type == "positiv") %>%
+  arrange(desc(score)) %>%
+  slice(1:5) %>%
+  pull(context)
+
+```
+
+```{r}
+
+resultat %>%
+  group_by(type) %>%
+  arrange(if_else(type == "negativ", score, -score)) %>%
+  slice(1:5) %>%
+  select(type, score, context) %>%
+  kable(caption = "Top 5 citater med højeste/laveste sentimentscore")
+
+```
+```{r}
+
+```
+
