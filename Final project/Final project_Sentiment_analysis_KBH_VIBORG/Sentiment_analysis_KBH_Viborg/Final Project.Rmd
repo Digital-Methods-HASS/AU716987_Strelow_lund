@@ -1,0 +1,316 @@
+---
+title: "Final Project"
+output: html_document
+date: "2025-05-29"
+author: Jeppe Strelow Lund AND Alberthe Holm Ravn
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+
+```{r}
+
+
+library(tidyverse)
+library(tidytext)
+library(Sentida)
+library(readr)
+library(stringr)
+library(forcats)
+
+```
+
+## 1. Funktion til at analysere per by og år
+
+```{r}
+sanalyser_by <- function(by, aar, url) {
+  data_navn <- paste0(by, aar)
+
+  # 1. Hent data
+  assign(paste0(data_navn, "_data"), read_csv(url), envir = .GlobalEnv)
+
+  # 2. Filtrér og fjern dubletter
+  industri_landbrug_keywords <- c("landbrug", "landbruget", "bonde", "bønder", "karl", "karle", "gård", "høst", "køer", "mejeri", "modernisering", "traktor", "plov", "pløje", "befolkningsfald", "fraflytning", "industri", "industrikvarter", "gas", "damp", "befolkningsvækst", "arbejder", "andelsbevægelse", "fabrik")
+
+   filtered_data <- get(paste0(data_navn, "_data")) %>%
+    filter(str_detect(fulltext_org, str_c(industri_landbrug_keywords, collapse = "|"))) %>%
+    distinct(fulltext_org, .keep_all = TRUE) %>%
+    mutate(sentiment = map_dbl(fulltext_org, ~ sentida(.x, output = "total")))
+
+  assign(paste0("filtered_", data_navn), filtered_data, envir = .GlobalEnv)
+  
+    # Gennemsnitsligscore 
+  assign(paste0("score_", data_navn), 
+         tibble(år = aar, by = by, gennemsnit = mean(filtered_data$sentiment)), 
+         envir = .GlobalEnv)
+
+  # 3. Sentida score pr. artikel
+  filtered_data <- filtered_data %>%
+    mutate(sentiment = map_dbl(fulltext_org, ~ sentida(.x, output = "total")))
+
+  assign(paste0("score_", data_navn), 
+         tibble(år = aar, by = by, gennemsnit = mean(filtered_data$sentiment)), 
+         envir = .GlobalEnv)
+
+  # 4. Tokeniser
+  tokens <- filtered_data %>%
+    unnest_tokens(word, fulltext_org) %>%
+    mutate(word = str_to_lower(word))
+  assign(paste0("tokens_", data_navn), tokens, envir = .GlobalEnv)
+}
+```
+
+## 2. Kør analyser for alle kombinationer
+
+```{r}
+# URLs
+url_kbh1790 <- "https://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=andel%2A%20OR%20landbrug%20OR%20industri%20OR%20arbejd%2A%20AND%20py%3A1790%20pu%3Ak%C3%B8benhavn&fields=link&fields=recordID&fields=timestamp&fields=pwa&fields=cer&fields=fulltext_org&fields=pageUUID&fields=editionUUID&fields=titleUUID&fields=editionId&fields=familyId&fields=newspaper_page&fields=newspaper_edition&fields=lplace&fields=location_name&fields=location_coordinates&max=-1&structure=header&structure=content&format=CSV"
+url_kbh1838 <- "https://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=andel%2A%20OR%20landbrug%20OR%20industri%20OR%20arbejd%2A%20AND%20py%3A1838%20pu%3Ak%C3%B8benhavn&fields=link&fields=recordID&fields=timestamp&fields=pwa&fields=cer&fields=fulltext_org&fields=pageUUID&fields=editionUUID&fields=titleUUID&fields=editionId&fields=familyId&fields=newspaper_page&fields=newspaper_edition&fields=lplace&fields=location_name&fields=location_coordinates&max=-1&structure=header&structure=content&format=CSV"
+url_kbh1857 <- "https://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=andel%2A%20OR%20landbrug%20OR%20industri%20OR%20arbejd%2A%20AND%20py%3A1857%20pu%3Ak%C3%B8benhavn&fields=link&fields=recordID&fields=timestamp&fields=pwa&fields=cer&fields=fulltext_org&fields=pageUUID&fields=editionUUID&fields=titleUUID&fields=editionId&fields=familyId&fields=newspaper_page&fields=newspaper_edition&fields=lplace&fields=location_name&fields=location_coordinates&max=-1&structure=header&structure=content&format=CSV"
+url_kbh1862 <- "https://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=andel%2A%20OR%20landbrug%20OR%20industri%20OR%20arbejd%2A%20AND%20py%3A1862%20pu%3Ak%C3%B8benhavn&fields=link&fields=recordID&fields=timestamp&fields=pwa&fields=cer&fields=fulltext_org&fields=pageUUID&fields=editionUUID&fields=titleUUID&fields=editionId&fields=familyId&fields=newspaper_page&fields=newspaper_edition&fields=lplace&fields=location_name&fields=location_coordinates&max=-1&structure=header&structure=content&format=CSV"
+url_kbh1871_1873 <- "https://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=andel%2A%20OR%20landbrug%20OR%20industri%20OR%20arbejd%2A%20AND%20py%3A%5B1871%20TO%201873%5D%20pu%3Ak%C3%B8benhavn&fields=link&fields=recordID&fields=timestamp&fields=pwa&fields=cer&fields=fulltext_org&fields=pageUUID&fields=editionUUID&fields=titleUUID&fields=editionId&fields=familyId&fields=newspaper_page&fields=newspaper_edition&fields=lplace&fields=location_name&fields=location_coordinates&max=-1&structure=header&structure=content&format=CSV"
+url_kbh1882 <- "https://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=andel%2A%20OR%20landbrug%20OR%20industri%20OR%20arbejd%2A%20AND%20py%3A1882%20pu%3Ak%C3%B8benhavn&fields=link&fields=recordID&fields=timestamp&fields=pwa&fields=cer&fields=fulltext_org&fields=pageUUID&fields=editionUUID&fields=titleUUID&fields=editionId&fields=familyId&fields=newspaper_page&fields=newspaper_edition&fields=lplace&fields=location_name&fields=location_coordinates&max=-1&structure=header&structure=content&format=CSV"
+
+url_viborg1790 <- "https://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=andel%2A%20OR%20landbrug%20OR%20industri%20OR%20arbejd%2A%20AND%20py%3A1790%20pu%3Aviborg&fields=link&fields=recordID&fields=timestamp&fields=pwa&fields=cer&fields=fulltext_org&fields=pageUUID&fields=editionUUID&fields=titleUUID&fields=editionId&fields=familyId&fields=newspaper_page&fields=newspaper_edition&fields=lplace&fields=location_name&fields=location_coordinates&max=-1&structure=header&structure=content&format=CSV"
+url_viborg1838 <- "https://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=andel%2A%20OR%20landbrug%20OR%20industri%20OR%20arbejd%2A%20AND%20py%3A1838%20pu%3Aviborg&fields=link&fields=recordID&fields=timestamp&fields=pwa&fields=cer&fields=fulltext_org&fields=pageUUID&fields=editionUUID&fields=titleUUID&fields=editionId&fields=familyId&fields=newspaper_page&fields=newspaper_edition&fields=lplace&fields=location_name&fields=location_coordinates&max=-1&structure=header&structure=content&format=CSV"
+url_viborg1857 <- "https://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=andel%2A%20OR%20landbrug%20OR%20industri%20OR%20arbejd%2A%20AND%20py%3A1857%20pu%3Aviborg&fields=link&fields=recordID&fields=timestamp&fields=pwa&fields=cer&fields=fulltext_org&fields=pageUUID&fields=editionUUID&fields=titleUUID&fields=editionId&fields=familyId&fields=newspaper_page&fields=newspaper_edition&fields=lplace&fields=location_name&fields=location_coordinates&max=-1&structure=header&structure=content&format=CSV"
+url_viborg1862 <- "https://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=andel%2A%20OR%20landbrug%20OR%20industri%20OR%20arbejd%2A%20AND%20py%3A1862%20pu%3Aviborg&fields=link&fields=recordID&fields=timestamp&fields=pwa&fields=cer&fields=fulltext_org&fields=pageUUID&fields=editionUUID&fields=titleUUID&fields=editionId&fields=familyId&fields=newspaper_page&fields=newspaper_edition&fields=lplace&fields=location_name&fields=location_coordinates&max=-1&structure=header&structure=content&format=CSV"
+url_viborg1871_1873 <- "https://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=andel%2A%20OR%20landbrug%20OR%20industri%20OR%20arbejd%2A%20AND%20py%3A%5B1871%20TO%201873%5D%20pu%3Aviborg&fields=link&fields=recordID&fields=timestamp&fields=pwa&fields=cer&fields=fulltext_org&fields=pageUUID&fields=editionUUID&fields=titleUUID&fields=editionId&fields=familyId&fields=newspaper_page&fields=newspaper_edition&fields=lplace&fields=location_name&fields=location_coordinates&max=-1&structure=header&structure=content&format=CSV"
+url_viborg1882 <- "https://labs.statsbiblioteket.dk/labsapi/api/aviser/export/fields?query=andel%2A%20OR%20landbrug%20OR%20industri%20OR%20arbejd%2A%20AND%20py%3A1882%20pu%3Aviborg&fields=link&fields=recordID&fields=timestamp&fields=pwa&fields=cer&fields=fulltext_org&fields=pageUUID&fields=editionUUID&fields=titleUUID&fields=editionId&fields=familyId&fields=newspaper_page&fields=newspaper_edition&fields=lplace&fields=location_name&fields=location_coordinates&max=-1&structure=header&structure=content&format=CSV"
+
+# Kald funktioner
+sanalyser_by("kbh", "1790", url_kbh1790)
+sanalyser_by("kbh", "1838", url_kbh1838)
+sanalyser_by("kbh", "1857", url_kbh1857)
+sanalyser_by("kbh", "1862", url_kbh1862)
+sanalyser_by("kbh", "1871_1873", url_kbh1871_1873)
+sanalyser_by("kbh", "1882", url_kbh1882)
+
+sanalyser_by("viborg", "1790", url_viborg1790)
+sanalyser_by("viborg", "1838", url_viborg1838)
+sanalyser_by("viborg", "1857", url_viborg1857)
+sanalyser_by("viborg", "1862", url_viborg1862)
+sanalyser_by("viborg", "1871_1873", url_viborg1871_1873)
+sanalyser_by("viborg", "1882", url_viborg1882)
+```
+
+## 3. Saml alle tokens og lav ordbog
+
+```{r}
+alle_tokens <- bind_rows(
+  tokens_kbh1790, tokens_kbh1838, tokens_kbh1857, tokens_kbh1862, tokens_kbh1871_1873, tokens_kbh1882,
+  tokens_viborg1790, tokens_viborg1838, tokens_viborg1857, tokens_viborg1862, tokens_viborg1871_1873, tokens_viborg1882
+)
+
+fælles_ordbog <- alle_tokens %>%
+  distinct(word) %>%
+  mutate(score = map_dbl(word, ~ sentida(.x, output = "total"))) %>%
+  filter(!is.na(score), score != 0)
+```
+
+## 4. Lav forklaringstabeller for hver by og år
+
+```{r}
+alle_tokens_list <- list(
+  kbh1790 = tokens_kbh1790,
+  kbh1838 = tokens_kbh1838,
+  kbh1857 = tokens_kbh1857,
+  kbh1862 = tokens_kbh1862,
+  kbh1871_1873 = tokens_kbh1871_1873,
+  kbh1882 = tokens_kbh1882,
+  viborg1790 = tokens_viborg1790,
+  viborg1838 = tokens_viborg1838,
+  viborg1857 = tokens_viborg1857,
+  viborg1862 = tokens_viborg1862,
+  viborg1871_1873 = tokens_viborg1871_1873,
+  viborg1882 = tokens_viborg1882
+)
+
+forklaringer <- imap(alle_tokens_list, function(tokens, navn) {
+  tokens %>%
+    inner_join(fælles_ordbog, by = "word") %>%
+    count(word, score, sort = TRUE, name = "n") %>%
+    mutate(score_bidrag = score * n,
+           score_pr_forekomst = score,
+           sted = navn)
+}) %>% bind_rows()
+```
+
+## 5. Visualiser samlet score
+
+```{r}
+gennemsnit_scores <- bind_rows(
+  score_kbh1790, score_kbh1838, score_kbh1857, score_kbh1862, score_kbh1871_1873, score_kbh1882,
+  score_viborg1790, score_viborg1838, score_viborg1857, score_viborg1862, score_viborg1871_1873, score_viborg1882
+)
+
+ggplot(gennemsnit_scores, aes(x = år, y = gennemsnit, color = by, group = by)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  geom_text(aes(label = round(gennemsnit, 2)), vjust = -0.5, size = 3) +
+  labs(
+    title = "Udvikling i gennemsnitlig sentiment-score over tid - 1",
+    x = "År",
+    y = "Gennemsnitlig sentiment-score",
+    color = "By"
+  ) +
+  theme_minimal()
+
+```
+## 6. VISUAL: Udvikling af samlet sentiment-score over tid
+
+```{r}
+
+# Lav liste over alle filtered_ dataframes
+alle_filtered <- list(
+  kbh1790 = filtered_kbh1790,
+  kbh1838 = filtered_kbh1838,
+  kbh1857 = filtered_kbh1857,
+  kbh1862 = filtered_kbh1862,
+  kbh1871_1873 = filtered_kbh1871_1873,
+  kbh1882 = filtered_kbh1882,
+  viborg1790 = filtered_viborg1790,
+  viborg1838 = filtered_viborg1838,
+  viborg1857 = filtered_viborg1857,
+  viborg1862 = filtered_viborg1862,
+  viborg1871_1873 = filtered_viborg1871_1873,
+  viborg1882 = filtered_viborg1882
+)
+
+
+# Beregn samlet score
+alle_scores <- imap_dfr(alle_filtered, function(df, navn) {
+  tibble(
+    by = ifelse(str_detect(navn, "kbh"), "kbh", "viborg"),
+    år = str_replace(navn, ".*?(\\d{4}_?\\d{0,4})", "\\1"),
+    score = sum(df$sentiment, na.rm = TRUE)
+  )
+ 
+ 
+})
+
+
+# 3. Visualisering: Udvikling i samlet sentiment-score over tid som linjegraf
+
+ggplot(alle_scores, aes(x = år, y = score, color = by, group = by)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  geom_text(aes(label = round(score)), vjust = -0.5, size = 3) +
+  coord_cartesian(ylim = c(0, max(alle_scores$score, na.rm = TRUE) * 1.1)) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(
+    title = "Udvikling i samlet sentiment-score over tid - 2",
+    x = "År",
+    y = "Samlet sentiment-score",
+    color = "By"
+  ) +
+  theme_minimal()
+
+
+
+```
+
+
+
+## 7. VISUAL: Top ±10 bidrag til score per år
+
+
+```{r}
+
+ årstalsliste <- c("1790", "1838", "1857", "1862", "1871_1873", "1882")
+spørgsmålsnumre <- c("3a", "3b", "3c", "3d", "3e", "3f")
+
+for (i in seq_along(årstalsliste)) {
+  år <- årstalsliste[i]
+  spørgsmålskode <- spørgsmålsnumre[i]
+
+  data <- forklaringer %>%
+    filter(str_detect(sted, år)) %>%
+    group_by(sted) %>%
+    slice_max(score_bidrag, n = 10, with_ties = FALSE) %>%
+    bind_rows(
+      forklaringer %>%
+        filter(str_detect(sted, år)) %>%
+        group_by(sted) %>%
+        slice_min(score_bidrag, n = 10, with_ties = FALSE)
+    ) %>%
+    ungroup() %>%
+    mutate(word = fct_reorder(word, score_bidrag))
+
+  print(
+    ggplot(data, aes(x = score_bidrag, y = word, fill = score_bidrag > 0)) +
+      geom_col(show.legend = FALSE) +
+      facet_wrap(~sted, scales = "free_y") +
+      labs(
+        title = paste0("Top ±10 bidrag til samlet sentiment-score – ", år, " – ", spørgsmålskode),
+        x = "Score-bidrag", y = "Ord"
+      ) +
+      theme_minimal()
+  )
+}
+
+```
+
+## 8. VISUAL: Top ±15 score pr. forekomst
+
+```{r}
+årstalsliste <- c("1790", "1838", "1857", "1862", "1871_1873", "1882")
+spørgsmålsnumre <- c("4a", "4b", "4c", "4d", "4e", "4f")
+
+for (i in seq_along(årstalsliste)) {
+  år <- årstalsliste[i]
+  spørgsmålskode <- spørgsmålsnumre[i]
+
+  data <- forklaringer %>%
+    filter(str_detect(sted, år)) %>%
+    filter(!is.na(score_pr_forekomst)) %>%
+    group_by(sted) %>%
+    slice_max(abs(score_pr_forekomst), n = 15, with_ties = FALSE) %>%
+    ungroup() %>%
+    mutate(word = fct_reorder(word, score_pr_forekomst))
+
+  if (nrow(data) > 0) {
+    print(
+      ggplot(data, aes(x = score_pr_forekomst, y = word, fill = score_pr_forekomst > 0)) +
+        geom_col(show.legend = FALSE) +
+        facet_wrap(~sted, scales = "free_y") +
+        labs(
+          title = paste0("Top ±15 score pr. forekomst – ", år, " – ", spørgsmålskode),
+          x = "Score pr. forekomst", y = "Ord"
+        ) +
+        theme_minimal()
+    )
+  } else {
+    message(paste0("Ingen data for året: ", år))
+  }
+}
+```
+
+
+```{r}
+# Gem alle raw datasæt som csv-filer
+write_csv(filtered_kbh1790, "filtered_kbh1790.csv")
+write_csv(filtered_kbh1838, "filtered_kbh1838.csv")
+write_csv(filtered_kbh1857, "filtered_kbh1857.csv")
+write_csv(filtered_kbh1862, "filtered_kbh1862.csv")
+write_csv(filtered_kbh1871_1873, "filtered_kbh1871_1873.csv")
+write_csv(filtered_kbh1882, "filtered_kbh1882.csv")
+
+write_csv(filtered_viborg1790, "filtered_viborg1790.csv")
+write_csv(filtered_viborg1838, "filtered_viborg1838.csv")
+write_csv(filtered_viborg1857, "filtered_viborg1857.csv")
+write_csv(filtered_viborg1862, "filtered_viborg1862.csv")
+write_csv(filtered_viborg1871_1873, "filtered_viborg1871_1873.csv")
+write_csv(filtered_viborg1882, "filtered_viborg1882.csv")
+
+```
+
+```{r}
+write_csv(filtered_kbh1790, "data/filtered_kbh1790.csv")
+
+```
+
